@@ -1,26 +1,189 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   ระบบสีของแอปนี้: "อุณหภูมิ"
+   ------------------------------------------------------------
+   งานของแอปคือพาของจาก "ตู้เย็น" ไป "เตา" — ทั้ง 4 ขั้นของ flow คือการเดินทางนั้นจริงๆ
+   สีพื้นของหน้าจึงอุ่นขึ้นทีละขั้น (ground-fridge → ground-stove) และแถบด้านบนก็เปลี่ยนสี
+   ตามไปด้วย มันไม่ใช่การตกแต่ง แต่เป็นการบอกว่า "ตอนนี้คุณอยู่ตรงไหนของการทำอาหาร"
+
+   สีทุกตัวมาจากของในครัวไทย ไม่ใช่ palette สำเร็จรูป:
+   กะเพรา / ไข่แดง / พริกแดง / ผิวสแตนเลส
+   ============================================================ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ---- สีดิบ ---- */
+  --chill: #e6edea;        /* พื้นตอนอยู่หน้าตู้เย็น — เทาอมเขียว ไม่ใช่ครีม */
+  --steam: #f8faf9;        /* ผิวการ์ด */
+  --deep: #12241e;         /* หมึก — ดำที่มีเขียวปนอยู่ ไม่ใช่ดำสนิท */
+  --basil: #1f5d45;        /* สีหลัก — เขียวกะเพรา ลึกและหม่นกว่า emerald ของ Tailwind */
+  --basil-soft: #e0ece6;
+  --yolk: #e8a33d;         /* ไข่แดง — ใช้เตือน/รอ */
+  --chili: #c8402b;        /* พริกแดง — ปลายทางฝั่งร้อน ใช้น้อยและใช้ให้ดัง */
+  --ash: #64756e;          /* ตัวหนังสือรอง */
+  --line: #d0dbd6;
+
+  /* ---- พื้นหลังไล่ตามอุณหภูมิของแต่ละขั้น ---- */
+  --ground-fridge: #e6edea;
+  --ground-list: #ecece5;
+  --ground-recipe: #f1eae0;
+  --ground-stove: #f6e4dc;
+
+  /* ---- ฟอนต์ (ตัวแปรจริงมาจาก next/font ใน app/layout.tsx) ---- */
+  --font-display-family: var(--font-display), "Segoe UI", sans-serif;
+  --font-body-family: var(--font-body), "Segoe UI", sans-serif;
+  --font-mono-family: var(--font-mono), ui-monospace, monospace;
+
+  /* ---- map เข้า token ของ shadcn เพื่อให้ Button/Card/Badge ได้สีชุดนี้ไปเอง ---- */
+  --background: var(--chill);
+  --foreground: var(--deep);
+  --card: var(--steam);
+  --card-foreground: var(--deep);
+  --popover: var(--steam);
+  --popover-foreground: var(--deep);
+  --primary: var(--basil);
+  --primary-foreground: #f8faf9;
+  --secondary: var(--basil-soft);
+  --secondary-foreground: var(--basil);
+  --muted: #eaf0ed;
+  --muted-foreground: var(--ash);
+  --accent: var(--basil-soft);
+  --accent-foreground: var(--basil);
+  --destructive: var(--chili);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--basil);
+  --radius: 0.75rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+
+  --font-sans: var(--font-body-family);
+  --font-display: var(--font-display-family);
+  --font-mono: var(--font-mono-family);
+  --font-heading: var(--font-display-family);
+
+  /* สีของแอปให้เรียกเป็น utility ได้ตรงๆ (bg-basil, text-chili ฯลฯ)
+     เดิมสีถูกเขียนเป็น Tailwind class ดิบๆ กระจายในทุก component (bg-emerald-700)
+     ทำให้เปลี่ยนธีมทีต้องไล่แก้ทีละไฟล์ — ตอนนี้แก้ที่ :root ที่เดียว */
+  --color-chill: var(--chill);
+  --color-steam: var(--steam);
+  --color-deep: var(--deep);
+  --color-basil: var(--basil);
+  --color-basil-soft: var(--basil-soft);
+  --color-yolk: var(--yolk);
+  --color-chili: var(--chili);
+  --color-ash: var(--ash);
+  --color-line: var(--line);
+
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* โหมดมืดยังไม่มีปุ่มเปิด (ไม่มีที่ไหน toggle class นี้) แต่ทิ้งค่าไว้ให้ครบ
+   เผื่อวันหลังทำปุ่ม จะได้ไม่ต้องมานั่งคิดสีใหม่ทั้งชุด — ใช้เฉดเดียวกับโหมดสว่าง */
+.dark {
+  --background: #0e1a16;
+  --foreground: #e6edea;
+  --card: #16261f;
+  --card-foreground: #e6edea;
+  --popover: #16261f;
+  --popover-foreground: #e6edea;
+  --primary: #4e9d7c;
+  --primary-foreground: #0e1a16;
+  --secondary: #1d3229;
+  --secondary-foreground: #cfe0d7;
+  --muted: #1d3229;
+  --muted-foreground: #9bb0a7;
+  --accent: #1d3229;
+  --accent-foreground: #cfe0d7;
+  --destructive: #e26a55;
+  --border: #24382f;
+  --input: #24382f;
+  --ring: #4e9d7c;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  html {
+    font-family: var(--font-body-family);
+  }
+
+  /* หัวเรื่องทุกระดับใช้ฟอนต์ไทยไม่มีหัว ตัดกับเนื้อความที่เป็นไทยมีหัว
+     ตั้งที่นี่ที่เดียวแทนการไปแปะ class ทีละที่ */
+  h1, h2, h3 {
+    font-family: var(--font-display-family);
+    letter-spacing: -0.01em;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* ---- พื้นหลังของแต่ละขั้น ---- */
+  /* เปลี่ยนช้าๆ (700ms) ให้รู้สึกเหมือนอุณหภูมิค่อยๆ ขยับ ไม่ใช่จอกระพริบเปลี่ยนสี */
+  .ground {
+    transition: background-color 700ms ease;
+  }
+  .ground-fridge { background-color: var(--ground-fridge); }
+  .ground-list   { background-color: var(--ground-list); }
+  .ground-recipe { background-color: var(--ground-recipe); }
+  .ground-stove  { background-color: var(--ground-stove); }
+
+  /* ตัวเลขที่ต้องไม่ขยับความกว้าง (นาฬิกา ปริมาณ แคลอรี่) */
+  .num {
+    font-family: var(--font-mono-family);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ป้ายกำกับตัวเล็กเหนือหัวเรื่อง */
+  .eyebrow {
+    font-family: var(--font-display-family);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ash);
+  }
+}
+
+/* คนที่ตั้งค่าเครื่องว่าไม่อยากเห็นการเคลื่อนไหว ต้องได้ตามนั้นจริง */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
