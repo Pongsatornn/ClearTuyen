@@ -70,3 +70,24 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
 }
+
+/**
+ * บริบทครัวทั้งชุดที่เชฟ AI ต้องรู้เพื่อตอบคำถามหนึ่งครั้ง
+ *
+ * รวมเป็นก้อนเดียวเพราะตอนนี้มีสองหน้าจอที่คุยกับเชฟได้ — กล่องแชท (`ChefChat`)
+ * กับโหมดโทรคุย (`ChefCall`) — ถ้าปล่อยให้แต่ละที่รับเป็น prop เดี่ยวๆ 8 ตัว
+ * เวลาเพิ่มบริบทใหม่ทีต้องไล่แก้ทุกจุดที่ส่งต่อกัน แล้วจะลืมที่ใดที่หนึ่งเสมอ
+ * (เคสที่เจอมาแล้วคือ dietRestrictions ที่ตกหล่นจนเชฟแนะนำของแทนผิดข้อจำกัด)
+ */
+export interface ChefContext {
+  recipeName: string;
+  recipeSteps: string[];
+  // วัตถุดิบที่ผู้ใช้กรอกไว้จริง (คนละชุดกับของที่สูตรเรียกใช้)
+  ingredients: string[];
+  servings?: number;
+  recipeIngredients?: string[];
+  dietRestrictions?: string[];
+  allergies?: string[];
+  // ส่งมาเฉพาะตอนอยู่ในโหมดทำอาหาร เพื่อให้เชฟรู้ว่าผู้ใช้ทำถึงขั้นไหนแล้ว
+  currentStep?: { number: number; total: number; text: string };
+}

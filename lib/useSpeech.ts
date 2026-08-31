@@ -53,6 +53,22 @@ export function useSpeech() {
     return () => window.speechSynthesis.removeEventListener('voiceschanged', pickThaiVoice);
   }, []);
 
+  /**
+   * ปลดล็อกลำโพงโดยพูดข้อความว่างหนึ่งครั้ง — ต้องเรียกจาก handler ของการแตะจอโดยตรง
+   *
+   * iOS/Safari ยอมให้ `speechSynthesis` ทำงานเฉพาะเมื่อ utterance แรกของหน้านั้นเกิดจาก
+   * การแตะของผู้ใช้ ในโหมดโทรคุยการพูดครั้งแรกเกิดขึ้นหลังผู้ใช้พูดจบประโยคแรก ซึ่งห่างจาก
+   * การกดปุ่ม "โทร" ไปหลายวินาทีแล้ว — ถ้าไม่ปลดล็อกไว้ตอนกด เชฟจะเงียบสนิททั้งสายบน iPhone
+   */
+  const unlock = useCallback(() => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(' '));
+    } catch {
+      // เบราว์เซอร์ไม่ยอมก็ปล่อยผ่าน — อย่างมากคือไม่มีเสียงตอบ ไม่ใช่แอปพัง
+    }
+  }, []);
+
   const stop = useCallback(() => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
     runIdRef.current++;
@@ -140,5 +156,5 @@ export function useSpeech() {
 
   // ไม่มี `isSupported` แยกออกมา เพราะทุกที่ที่เรียกใช้สนใจคำถามเดียวคือ "อ่านไทยได้ไหม"
   // เบราว์เซอร์ที่มี speechSynthesis แต่ไม่มีเสียงไทย มีค่าเท่ากับไม่รองรับสำหรับแอปนี้
-  return { speak, stop, isSpeaking, hasThaiVoice: thaiVoice !== null };
+  return { speak, stop, unlock, isSpeaking, hasThaiVoice: thaiVoice !== null };
 }
