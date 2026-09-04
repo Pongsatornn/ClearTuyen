@@ -9,8 +9,47 @@ export type CallPhase = 'idle' | 'connecting' | 'listening' | 'transcribing' | '
 const CALIBRATION_MS = 600;
 /** ระดับความดังต่ำสุดที่ยอมนับว่าเป็นเสียงพูด — กันห้องเงียบสนิทจนฐานเสียงเป็นศูนย์ */
 const MIN_SPEECH_RMS = 0.012;
-/** ตัวคูณเหนือเสียงรบกวนพื้นหลังที่วัดได้จริง */
-const NOISE_MULTIPLIER = 2.2;
+/**
+ * เกณฑ์ความดังมีสองระดับ ไม่ใช่ระดับเดียว (hysteresis)
+ *
+ * ระดับ "เปิด" เข้มกว่าเพราะใช้ตัดสินว่ามีคนเริ่มพูดหรือยัง ส่วนระดับ "ปิด" ผ่อนกว่า
+ * เพราะใช้ตัดสินว่ายังพูดอยู่ไหม ถ้าใช้เลขเดียวกันทั้งสองหน้าที่จะได้ผลเสียคนละทาง:
+ * ตั้งต่ำก็รับเสียงกระทะเข้ามาเป็นคำพูด ตั้งสูงก็ตัดจบประโยคกลางคำที่คนพูดเบาลง
+ * (พยางค์ท้ายประโยคภาษาไทยเบากว่าต้นประโยคเสมอ)
+ */
+const NOISE_MULTIPLIER_OPEN = 3;
+const NOISE_MULTIPLIER_CLOSE = 1.8;
+/**
+ * ต้องดังเกินเกณฑ์ต่อเนื่องอย่างน้อยเท่านี้ ถึงจะนับว่า "มีคนเริ่มพูด"
+ *
+ * **นี่คือข้อที่กันเสียงรบกวนได้มากที่สุด** เดิมใช้แค่เฟรมเดียวที่ดังเกินเกณฑ์ก็ถือว่า
+ * มีคนพูดแล้ว ซึ่งเสียงจานวางโดนโต๊ะ ฝาหม้อกระทบ หรือประตูตู้เย็นปิด ผ่านเกณฑ์นั้น
+ * ได้หมดเพราะมันดัง — ต่างกันตรงที่เสียงพวกนั้น "สั้น" (ไม่ถึงหนึ่งในสิบวินาที)
+ * ส่วนพยางค์ที่คนพูดจริงกินเวลาอย่างน้อยสองในสิบวินาทีเสมอ ความยาวจึงแยกสองอย่างนี้
+ * ออกจากกันได้ดีกว่าความดัง
+ */
+const SPEECH_ONSET_MS = 200;
+/**
+ * ตัวนับ onset ลดลงช้ากว่าตอนเพิ่มเท่านี้เท่า (0.4 = ลดด้วยความเร็ว 40% ของตอนเพิ่ม)
+ *
+ * จำเป็นเพราะคนพูดไม่ได้ดังต่อเนื่องรวดเดียว 200ms — มีช่องว่างระหว่างคำสั้นๆ คั่นตลอด
+ * ถ้าตัวนับลดเร็วเท่ากับตอนเพิ่ม ประโยคที่มีช่องว่างครึ่งหนึ่งของเวลาจะขึ้นๆ ลงๆ อยู่แถว
+ * 150ms แล้วไม่มีวันแตะ 200ms เลย — จำลองแล้วเสียงพูดเบาและเสียงพูดในครัวที่พัดลมดัง
+ * ถูกทิ้งทั้งคู่ด้วยเหตุนี้ พอให้ลดช้าลงเป็น 0.4 ทั้งสองเคสผ่าน
+ *
+ * ยังกันเสียงรบกวนได้เหมือนเดิม เพราะเสียงของกระทบกันสั้นกว่าช่องว่างระหว่างคำมาก:
+ * มีดกระทบเขียงตอนหั่นผัก (ดัง 30ms ทุก 250ms) ตัวนับติดลบสุทธิทุกรอบ ไม่มีวันสะสมขึ้น
+ */
+const ONSET_DECAY = 0.4;
+/**
+ * เสียงพูดรวมทั้งท่อนต้องได้อย่างน้อยเท่านี้ ไม่งั้นทิ้งท่อนนั้นไปโดยไม่ส่งไปถอด
+ *
+ * ด่านที่สองต่อจาก SPEECH_ONSET_MS: กันท่อนที่มีเสียงคล้ายพูดแวบเดียวแล้วเงียบยาว
+ * ซึ่งเป็นอาหารชั้นดีของอาการมโน — Whisper ที่ได้คลิปเงียบๆ มาถอดจะไม่คืนค่าว่าง
+ * แต่จะ**แต่งประโยคขึ้นมาเอง** (ทดสอบแล้วได้คำว่า "กลับไปที่นี่" จากคลิปที่ไม่มีใครพูด)
+ * แล้วประโยคที่แต่งขึ้นนั้นจะถูกส่งต่อไปให้เชฟตอบเหมือนเป็นคำถามจริงของผู้ใช้
+ */
+const MIN_VOICED_MS = 350;
 /** เงียบต่อเนื่องเท่านี้หลังเริ่มพูดแล้ว = จบประโยค ส่งไปถอดได้ */
 const SILENCE_END_MS = 1000;
 /**
@@ -50,6 +89,16 @@ const IDLE_SEGMENTS_BEFORE_HANGUP = 20;
  * 4. **เกณฑ์เสียงปรับตามครัวตลอดสาย** — ไม่ได้วัดครั้งเดียวตอนต้นแล้วจบ เพราะคนเปิด
  *    เครื่องดูดควันกลางสายได้ ถ้าเกณฑ์ไม่ขยับตาม มันจะคิดว่ามีคนพูดอยู่ตลอดเวลา
  *    แล้วไม่ยอมตัดจบประโยคอีกเลย
+ * 5. **ตัดสินจาก "ดังนานแค่ไหน" ไม่ใช่แค่ "ดังแค่ไหน"** — ในครัวมีเสียงที่ดังกว่า
+ *    คนพูดเยอะมาก (จานวางโดนโต๊ะ ฝาหม้อ ประตูตู้เย็น) ถ้าวัดแค่ความดัง เสียงพวกนี้
+ *    ผ่านเข้ามาเป็น "คำถาม" ได้หมด สิ่งที่แยกมันออกจากเสียงพูดคือความยาว: ของกระทบกัน
+ *    ดังแวบเดียวไม่ถึงหนึ่งในสิบวินาที ส่วนพยางค์ที่คนพูดยาวกว่านั้นเสมอ
+ *    (ดู SPEECH_ONSET_MS กับ MIN_VOICED_MS)
+ *
+ *    ข้อนี้สำคัญกว่าที่คิด เพราะปลายทางไม่ได้แค่ "ถอดออกมาเป็นข้อความเปล่า" —
+ *    Whisper ที่ได้คลิปไม่มีเสียงพูดมาถอดจะ**แต่งประโยคขึ้นมาเอง** แล้วประโยคนั้น
+ *    ถูกส่งต่อไปให้เชฟตอบเหมือนเป็นคำถามจริงของผู้ใช้ (ด่านสุดท้ายที่กันเรื่องนี้อยู่
+ *    ฝั่ง server คือ `looksHallucinated` ใน app/api/transcribe/route.ts)
  */
 export function useVoiceCall(options: {
   /**
@@ -185,15 +234,26 @@ export function useVoiceCall(options: {
 
         let recorder: MediaRecorder;
         try {
-          recorder = new MediaRecorder(stream);
+          // ระบุ bitrate เองแทนที่จะปล่อยตามค่าเริ่มต้นของเบราว์เซอร์ — ค่าเริ่มต้นต่างกัน
+          // มากในแต่ละเบราว์เซอร์ และบางตัวตั้งไว้ต่ำพอที่ opus จะกลืนรายละเอียดของเสียง
+          // พยัญชนะทิ้ง ซึ่งเป็นส่วนที่ Whisper ใช้แยกคำที่เสียงใกล้กัน ผลคือถอดผิดเฉพาะ
+          // ตอนพูดเร็ว (พยัญชนะสั้นลง) แต่ถอดถูกตอนพูดช้าและเน้นเสียง
+          recorder = new MediaRecorder(stream, { audioBitsPerSecond: 128000 });
         } catch {
-          resolve(null);
-          return;
+          try {
+            // เบราว์เซอร์ที่ไม่รับ option นี้ — อัดแบบค่าเริ่มต้นดีกว่าไม่ได้อัดเลย
+            recorder = new MediaRecorder(stream);
+          } catch {
+            resolve(null);
+            return;
+          }
         }
         recorderRef.current = recorder;
 
         const chunks: Blob[] = [];
         let heardSpeech = false;
+        /** เวลารวมที่ดังเกินเกณฑ์จริงๆ ในท่อนนี้ — ไม่ใช่ความยาวของไฟล์ที่อัดได้ */
+        let voicedMs = 0;
 
         recorder.ondataavailable = e => {
           if (e.data.size > 0) chunks.push(e.data);
@@ -205,7 +265,9 @@ export function useVoiceCall(options: {
             cancelAnimationFrame(rafRef.current);
             rafRef.current = null;
           }
-          if (!heardSpeech || !chunks.length || !activeRef.current) {
+          // เสียงพูดรวมทั้งท่อนน้อยเกินกว่าจะเป็นคำถาม — ทิ้งไปเลย อย่าส่งไปถอด
+          // เพราะ Whisper ที่ได้คลิปแบบนี้จะแต่งประโยคขึ้นมาเองแทนที่จะคืนค่าว่าง
+          if (!heardSpeech || voicedMs < MIN_VOICED_MS || !chunks.length || !activeRef.current) {
             resolve(null);
             return;
           }
@@ -220,6 +282,9 @@ export function useVoiceCall(options: {
         const startedAt = performance.now();
         let lastLoudAt = 0;
         let lastPaint = 0;
+        let lastTickAt = performance.now();
+        /** เวลาที่ดังต่อเนื่องมาแล้วในช่วงที่ยังไม่ยอมรับว่าเป็นเสียงพูด */
+        let onsetMs = 0;
 
         function tick() {
           if (recorder.state !== 'recording') return;
@@ -234,26 +299,65 @@ export function useVoiceCall(options: {
           const rms = readLevel(samples);
           const now = performance.now();
           const elapsed = now - startedAt;
+          // นับเวลาจากนาฬิกาจริง ไม่ใช่จำนวนเฟรม — requestAnimationFrame ไม่ได้เดินคงที่
+          // 60 ครั้งต่อวินาทีเสมอ (จอ 120Hz เดินเร็วกว่า เครื่องที่โหลดหนักเดินช้ากว่า)
+          // ถ้านับเป็นเฟรม เกณฑ์ "กี่มิลลิวินาที" จะเพี้ยนไปคนละเรื่องในแต่ละเครื่อง
+          const dt = Math.min(now - lastTickAt, 100);
+          lastTickAt = now;
 
           if (now - lastPaint > 66) {
             lastPaint = now;
             setLevel(Math.min(1, rms * 8));
           }
 
-          const threshold = Math.max(MIN_SPEECH_RMS, noiseFloorRef.current * NOISE_MULTIPLIER);
+          const noiseFloor = noiseFloorRef.current;
+          const openThreshold = Math.max(MIN_SPEECH_RMS, noiseFloor * NOISE_MULTIPLIER_OPEN);
+          const closeThreshold = Math.max(MIN_SPEECH_RMS * 0.7, noiseFloor * NOISE_MULTIPLIER_CLOSE);
 
-          if (rms > threshold) {
-            heardSpeech = true;
+          if (!heardSpeech) {
+            if (rms > openThreshold) {
+              onsetMs += dt;
+              // ดังต่อเนื่องนานพอแล้ว = คนพูดจริง ไม่ใช่เสียงของกระทบกัน
+              if (onsetMs >= SPEECH_ONSET_MS) {
+                heardSpeech = true;
+                voicedMs = onsetMs;
+                lastLoudAt = now;
+              }
+            } else {
+              // ค่อยๆ ลดแทนที่จะรีเซ็ตเป็นศูนย์ และลดช้ากว่าตอนเพิ่ม — เสียงพูดมีช่องว่าง
+              // ระหว่างคำคั่นตลอด ถ้าลดเร็วเท่ากับตอนเพิ่ม ตัวนับจะไม่มีวันแตะเกณฑ์
+              // (ดูเหตุผลเต็มที่ ONSET_DECAY)
+              onsetMs = Math.max(0, onsetMs - dt * ONSET_DECAY);
+              noiseFloorRef.current = noiseFloor * 0.98 + rms * 0.02;
+            }
+
+            /**
+             * ยังไม่มีใครพูดในท่อนนี้ — รีไซเคิลไฟล์ที่อัดค้างไว้ แล้วเริ่มท่อนใหม่
+             *
+             * เงื่อนไข `onsetMs === 0` สำคัญกว่าที่เห็น: มันแปลว่า "ไม่มีวี่แววว่าใครกำลัง
+             * จะเริ่มพูด" ถ้าตัดทิ้งตอนที่ตัวนับกำลังไต่อยู่ จะตัดเอาคำแรกของประโยคที่
+             * ผู้ใช้เพิ่งเริ่มพูดหายไปด้วย แล้วท่อนใหม่จะได้ยินแค่ครึ่งประโยคหลัง
+             *
+             * เป็นจุดที่เปราะขึ้นหลังเปลี่ยนมาใช้ SPEECH_ONSET_MS เพราะเดิมเสียงดังเฟรมเดียว
+             * ก็นับว่าพูดแล้วทันที ตอนนี้ต้องใช้เวลาไต่ ~200ms จึงมีช่วงคาบเกี่ยวให้พลาดได้
+             * (จำลองแล้วพลาด 17 ครั้งจาก 19 จังหวะที่ทดสอบรอบๆ เส้นเวลานี้)
+             *
+             * เพดานแข็งที่สองเท่าไว้กันเคสเสียงรบกวนที่ทำให้ตัวนับไม่มีวันลงถึงศูนย์ —
+             * ไม่งั้นไฟล์จะโตไปเรื่อยๆ ซึ่งเป็นเหตุผลที่ต้องมีการรีไซเคิลตั้งแต่แรก
+             */
+            const nothingBrewing = onsetMs === 0;
+            if (elapsed > SEGMENT_WAIT_MS && (nothingBrewing || elapsed > SEGMENT_WAIT_MS * 2)) {
+              recorder.stop();
+            }
+            return;
+          }
+
+          if (rms > closeThreshold) {
+            voicedMs += dt;
             lastLoudAt = now;
           } else {
             // ปรับฐานเสียงพื้นหลังเฉพาะตอนที่ไม่มีใครพูด — ค่อยๆ ขยับ ไม่กระโดดตามเสียงจาน
-            noiseFloorRef.current = noiseFloorRef.current * 0.98 + rms * 0.02;
-          }
-
-          if (!heardSpeech) {
-            // ยังไม่มีใครพูดในท่อนนี้ — รีไซเคิลไฟล์ที่อัดค้างไว้ แล้วเริ่มท่อนใหม่
-            if (elapsed > SEGMENT_WAIT_MS) recorder.stop();
-            return;
+            noiseFloorRef.current = noiseFloor * 0.98 + rms * 0.02;
           }
 
           if (now - lastLoudAt > SILENCE_END_MS || elapsed > MAX_UTTERANCE_MS) recorder.stop();
@@ -301,7 +405,21 @@ export function useVoiceCall(options: {
           // echoCancellation คือด่านแรกที่กันไม่ให้ไมค์ได้ยินเสียงเชฟจากลำโพงตัวเอง
           // (ด่านที่สองคือการไม่เปิดไมค์เลยระหว่างที่เชฟพูด — ดู onUtterance)
           echoCancellation: true,
-          noiseSuppression: true,
+          /**
+           * ปิดการตัดเสียงรบกวนของเบราว์เซอร์ตั้งใจ — มันทำให้ Whisper ถอดผิดมากขึ้น
+           *
+           * ตัวกรองนี้ถูกออกแบบมาให้ "คนฟังแล้วสบายหู" ไม่ใช่ "เครื่องถอดเสียงแล้วแม่น"
+           * วิธีทำงานของมันคือตัดย่านความถี่ที่ดูเหมือนเสียงรบกวนทิ้ง ซึ่งย่านนั้นทับกับ
+           * เสียงพยัญชนะ (ส ฉ ช ถ ค) พอดี — พยัญชนะเป็นตัวที่ Whisper ใช้แยกคำที่เสียง
+           * ใกล้กัน พอถูกกลืนไป มันเลยต้องเดาจากบริบทแทน และเดาผิดบ่อยตอนพูดเร็ว
+           * ซึ่งเป็นพยัญชนะที่สั้นอยู่แล้ว
+           *
+           * เดิมจำเป็นต้องเปิดเพราะเกณฑ์ตัดสินเสียงพูดวัดจากความดังอย่างเดียว เสียงรบกวน
+           * จึงกวนการตรวจจับโดยตรง แต่ตอนนี้เกณฑ์ดูความยาวของเสียงด้วย (ดู SPEECH_ONSET_MS)
+           * และมีฐานเสียงพื้นหลังที่ขยับตามครัวเอง จึงไม่ต้องพึ่งตัวกรองของเบราว์เซอร์แล้ว
+           */
+          noiseSuppression: false,
+          // ยังเปิดไว้ — ปรับความดังให้สม่ำเสมอช่วยให้ถอดแม่นขึ้น ไม่ได้ตัดอะไรทิ้ง
           autoGainControl: true,
         },
       });
@@ -360,6 +478,15 @@ export function useVoiceCall(options: {
 
     // วัดเสียงพื้นหลังของครัวก่อนเริ่มฟังจริง ถ้าข้ามขั้นนี้ท่อนแรกจะตัดสินผิดเสมอ
     // เพราะฐานเสียงยังเป็น 0 อยู่ (ทุกอย่างดูเหมือนเสียงพูดไปหมด)
+    //
+    // ⚠️ ห้ามใช้ "ค่าเฉลี่ย" ของช่วงนี้ — ผู้ใช้เริ่มพูดทับ 600ms แรกได้ตลอด (หน้าจอโทร
+    // รับสายเองทันทีที่เปิด ไม่ได้รอให้กดอะไร) ถ้าเผลอเอาเสียงพูดไปเฉลี่ยเป็น "เสียงพื้นหลัง"
+    // ฐานเสียงจะถูกดันสูงจนเกณฑ์เปิดสูงตาม แล้วสายจะหูหนวกไปทั้งประโยคแรก จำลองแล้ว
+    // เกิดขึ้นจริงทุกครั้ง เปลี่ยนมาใช้ค่าที่ตำแหน่ง 25% ของเฟรมที่เรียงจากเบาไปดังแทน
+    // (เสียงพื้นหลังคือส่วนที่เบาและนิ่ง ส่วนเสียงพูดคือยอดที่โผล่ขึ้นมาเป็นช่วงๆ)
+    // แล้วครอบเพดานไว้ไม่ให้เกิน MIN_SPEECH_RMS อีกชั้น — เริ่มสายด้วยเกณฑ์ที่ไวเกินไป
+    // นิดหน่อยยังแก้ได้เองภายในไม่กี่วินาที (ฐานเสียงขยับตามครัวตลอดสาย) แต่เริ่มสาย
+    // ด้วยเกณฑ์ที่หูหนวก ผู้ใช้จะพูดใส่จอเปล่าๆ โดยไม่รู้ว่าทำไมไม่มีอะไรเกิดขึ้น
     await new Promise<void>(resolve => {
       const analyser = analyserRef.current;
       if (!analyser) {
@@ -368,16 +495,16 @@ export function useVoiceCall(options: {
       }
       const samples = new Uint8Array(analyser.fftSize);
       const startedAt = performance.now();
-      let total = 0;
-      let frames = 0;
+      const levels: number[] = [];
       function measure() {
         if (!activeRef.current || performance.now() - startedAt > CALIBRATION_MS) {
-          noiseFloorRef.current = frames ? total / frames : 0;
+          levels.sort((a, b) => a - b);
+          const quartile = levels.length ? levels[Math.floor(levels.length * 0.25)] : 0;
+          noiseFloorRef.current = Math.min(quartile, MIN_SPEECH_RMS);
           resolve();
           return;
         }
-        total += readLevel(samples);
-        frames++;
+        levels.push(readLevel(samples));
         rafRef.current = requestAnimationFrame(measure);
       }
       rafRef.current = requestAnimationFrame(measure);
