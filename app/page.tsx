@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Search, Loader2, LogIn, ArrowLeft, ChefHat, ListChecks, ShieldAlert, Sparkles } from 'lucide-react';
-import ChefChat from '@/components/ChefChat';
 import {
   saveRecipe as saveToSupabase,
   NotLoggedInError,
@@ -81,8 +80,9 @@ interface PageState {
   priorityIngredients: string[];
   needsLoginToSave: boolean;
   // บทสนทนากับเชฟของสูตรที่เปิดอยู่ — เก็บที่นี่ ไม่ใช่ใน ChefChat
-  // เพราะหน้าสูตรกับโหมดทำอาหารเป็นคนละ render branch กัน ถ้าปล่อยให้แต่ละที่
-  // ถือ state เอง พอกด "เริ่มทำเมนูนี้" บทสนทนาจะหายทั้งชุดทั้งที่เป็นเมนูเดียวกัน
+  // กล่องแชทอยู่ในโหมดทำอาหารที่เดียว แต่ ChefChat unmount ทุกครั้งที่ออกจากโหมด
+  // (กดออกไปดูสูตรแล้วกลับเข้ามาใหม่) ถ้าปล่อยให้มันถือ state เอง บทสนทนาจะหายทั้งชุด
+  // ทั้งที่ยังเป็นเมนูเดียวกัน
   chatMessages: ChatMessage[];
   // เคยเข้าโหมดทำอาหารของสูตรนี้ไปแล้วหรือยัง — ใช้ตัดสินว่าจะแทรกคำทักของโหมดทำอาหาร
   // หรือไม่ ถ้าไม่มีตัวนี้ กดเข้าออกโหมดหลายรอบจะได้คำทักซ้ำกันเรียงกันเป็นพืด
@@ -519,6 +519,9 @@ export default function Home() {
           allergies: state.allergies,
           priorityIngredients: usablePriorityIngredients,
           menuName: menu.recipe_name,
+          // การ์ดบอกไปแล้วว่าจานนี้ใช้ของชิ้นไหนบ้าง ส่งไปให้สูตรเต็มยึดตามด้วย
+          // ไม่งั้นสูตรจะลากของทั้งตู้เย็นมาใส่จานเดียว (ซุปมะเขือเทศใส่เบียร์กับลูกแพร์)
+          menuIngredients: menu.uses_ingredients,
           // ส่งค่าที่การ์ดในลิสต์โชว์ไปแล้วกลับไปด้วย ให้สูตรเต็มใช้ตัวเลขเดียวกัน ไม่ใช่คิดใหม่แล้วขัดกันเอง
           estimatedTime: menu.estimated_time,
           difficulty: menu.difficulty,
@@ -641,11 +644,15 @@ export default function Home() {
       return;
     }
 
+    // กล่องถาม-ตอบโผล่ครั้งแรกตอนกดปุ่มนี้ ไม่ได้อยู่ที่หน้าสูตรแล้ว ถ้ายังไม่มีใครคุย
+    // (มีแค่คำทักตอนเปิดสูตร) ก็ไม่ต้องเก็บคำทักนั้นไว้ ไม่งั้นเข้ามาเจอเชฟทักซ้อนสองฟองรวด
+    const hasTalked = state.chatMessages.some(m => m.role === 'user');
+
     updateState({
       view: 'cooking',
       hasEnteredCooking: true,
       chatMessages: [
-        ...state.chatMessages,
+        ...(hasTalked ? state.chatMessages : []),
         {
           role: 'assistant',
           content:
@@ -992,28 +999,6 @@ export default function Home() {
                 <ChefHat className="w-4 h-4 mr-2" /> เริ่มทำเมนูนี้
               </Button>
             </div>
-
-            {/* ยังไม่พร้อมลงมือ แต่มีคำถามค้างใจก่อน ก็ถามเชฟได้ตั้งแต่หน้านี้ */}
-            <ChefChat
-              key={recipeVersion}
-              recipeName={state.recipe.recipe_name}
-              recipeSteps={state.recipe.instructions}
-              ingredients={usableIngredients}
-              servings={state.servings}
-              dietRestrictions={state.dietRestrictions}
-              allergies={state.allergies}
-              recipeIngredients={state.recipe.ingredients.map(
-                ing =>
-                  `${ing.item} ${scaleAmountText(
-                    ing,
-                    servingsFactor(state.servings, state.recipe!.servings)
-                  )}`
-              )}
-              messages={state.chatMessages}
-              onMessagesChange={updater =>
-                setState(prev => ({ ...prev, chatMessages: updater(prev.chatMessages) }))
-              }
-            />
           </>
         )}
 
