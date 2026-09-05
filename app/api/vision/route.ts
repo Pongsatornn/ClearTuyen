@@ -1,8 +1,7 @@
-import Groq from 'groq-sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { VISION_MODEL } from '@/lib/groq';
+import {VISION_MODEL, createGroqClient, isRateLimited, RATE_LIMIT_MESSAGE } from '@/lib/groq';
 
-const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const client = createGroqClient();
 
 export async function POST(req: NextRequest) {
   try {
@@ -55,6 +54,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ingredients });
   } catch (error) {
     console.error('Vision Error:', error);
+
+    // ชนโควตา token ต่อนาทีของ Groq ไม่ใช่ความผิดพลาดของโค้ดหรือของผู้ใช้ — แยกข้อความ
+    // ออกมาเพราะสิ่งที่เขาควรทำต่างกันสิ้นเชิง: กรณีนี้แค่รอสักครู่แล้วกดใหม่ก็ได้ผลเลย
+    // ส่วนข้อความรวมๆ ว่า "เกิดข้อผิดพลาด" ทำให้คนเข้าใจว่าแอปพังแล้วเลิกใช้ไปเฉยๆ
+    // (สถานะ 429 ด้วย ไม่ใช่ 500 — ฝั่ง client จะได้แยกได้ถ้าวันหลังอยากใส่ auto-retry)
+    if (isRateLimited(error)) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
+    }
     return NextResponse.json({ error: 'เกิดข้อผิดพลาดในการวิเคราะห์รูปภาพ' }, { status: 500 });
   }
 }

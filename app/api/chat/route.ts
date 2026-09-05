@@ -1,11 +1,10 @@
-import Groq from 'groq-sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { TEXT_MODEL } from '@/lib/groq';
+import {TEXT_MODEL, createGroqClient, isRateLimited, RATE_LIMIT_MESSAGE } from '@/lib/groq';
 import { limitSpokenReply } from '@/lib/voice';
 import { fixThaiNumerals, violatesThaiOnly } from '@/lib/thai';
 import { buildDietPromptRules, sanitizeDietInput } from '@/lib/diet';
 
-const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const client = createGroqClient();
 
 /**
  * จำนวนข้อความย้อนหลังที่ส่งให้โมเดล — โหมดเสียงส่งน้อยกว่ามากโดยตั้งใจ
@@ -238,6 +237,14 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Chat error:', error);
+
+    // ชนโควตา token ต่อนาทีของ Groq ไม่ใช่ความผิดพลาดของโค้ดหรือของผู้ใช้ — แยกข้อความ
+    // ออกมาเพราะสิ่งที่เขาควรทำต่างกันสิ้นเชิง: กรณีนี้แค่รอสักครู่แล้วกดใหม่ก็ได้ผลเลย
+    // ส่วนข้อความรวมๆ ว่า "เกิดข้อผิดพลาด" ทำให้คนเข้าใจว่าแอปพังแล้วเลิกใช้ไปเฉยๆ
+    // (สถานะ 429 ด้วย ไม่ใช่ 500 — ฝั่ง client จะได้แยกได้ถ้าวันหลังอยากใส่ auto-retry)
+    if (isRateLimited(error)) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
+    }
     return NextResponse.json(
       { role: 'assistant', content: 'เกิดข้อผิดพลาดในการเชื่อมต่อกับเชฟ' }, 
       { status: 500 }

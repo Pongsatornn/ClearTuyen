@@ -1,12 +1,11 @@
-import Groq from 'groq-sdk';
 import { NextRequest, NextResponse } from 'next/server';
-import { TEXT_MODEL } from '@/lib/groq';
+import {TEXT_MODEL, createGroqClient, isRateLimited, RATE_LIMIT_MESSAGE } from '@/lib/groq';
 import { z } from 'zod';
 import type { Recipe } from '@/lib/types';
 import { clampServings, parseAmountText } from '@/lib/utils';
 import { buildDietPromptRules, findDietViolations, sanitizeDietInput } from '@/lib/diet';
 
-const client = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const client = createGroqClient();
 
 // Recipe Schema definition aligned with AI_CHEF_SPEC.md.
 // `satisfies` ตรวจตอน compile ว่าโครง schema นี้ตรงกับ Recipe type ใน lib/types.ts
@@ -242,6 +241,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(validatedRecipe);
   } catch (error) {
     console.error('Generate Recipe Error:', error);
+
+    // ชนโควตา token ต่อนาทีของ Groq ไม่ใช่ความผิดพลาดของโค้ดหรือของผู้ใช้ — แยกข้อความ
+    // ออกมาเพราะสิ่งที่เขาควรทำต่างกันสิ้นเชิง: กรณีนี้แค่รอสักครู่แล้วกดใหม่ก็ได้ผลเลย
+    // ส่วนข้อความรวมๆ ว่า "เกิดข้อผิดพลาด" ทำให้คนเข้าใจว่าแอปพังแล้วเลิกใช้ไปเฉยๆ
+    // (สถานะ 429 ด้วย ไม่ใช่ 500 — ฝั่ง client จะได้แยกได้ถ้าวันหลังอยากใส่ auto-retry)
+    if (isRateLimited(error)) {
+      return NextResponse.json({ error: RATE_LIMIT_MESSAGE }, { status: 429 });
+    }
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
